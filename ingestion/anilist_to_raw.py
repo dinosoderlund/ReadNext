@@ -53,3 +53,59 @@ def fetch_page(page):
 
     response.raise_for_status() # exception for other type of errors 
     return response.json()["data"]["Page"]
+
+
+# save the titles in snowflake
+def save_titles(cursor, titles):
+    """
+    We send the whole page(50 titles) as one whole json list.
+    Flattens slits the list into one row per title inside snowflake.
+    Merge = insert the title if new, update if it already exists to avoid duplicates
+    """
+    cursor.execute("""
+        MERGE INTO RAW.ANILIST_MEDIA AS target
+        USING (
+            SELECT value:id::NUMBER AS id, value AS payload
+            FROM TABLE(FLATTEN(input => PARSE_JSON(%s)))
+        ) AS source
+        ON target.id = source.id
+        WHEN MATCHED THEN UPDATE SET
+            payload = source.payload,
+            loaded_at = CURRENT_TIMESTAMP()
+        WHEN NOT MATCHED THEN INSERT (id, payload, loaded_at)
+            VALUES (source.id, source.payload, CURRENT_TIMESTAMP())
+        """,
+        (json.dumps(titles),),
+        )
+
+# run everything 
+def main():
+    with get_connection() as conn:
+        cursor = conn.cursor()
+
+        # create the table the first time we run the script
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS RAW.ANILIST_MEDIA (
+                id        NUMBER PRIMARY KEY,
+                payload   VARIANT,
+                loaded_at TIMESTAMP
+            )
+            """
+        )
+        
+        
+        for page in range(1, PAGES_TO_FETCH + 1):
+          data = fetch_page(page)
+          save_titles(cursor, data["media"])
+          print(f"Page {page}: saved {len(data["media"])} titles")
+          
+          if not data["pageInfo"]["hasNextPage"]:
+            break # no more titles to fetch
+          time.sleep(WAIT_SECONDS)
+        
+        cursor.execute("SELECT COUNT(*) FROM RAW.ANILIST_MEDIA")
+        print(f"Done, the table now has {cursor.fetchone()[0]} titles")
+
+
+if __name__ == "__main__":
+  main()
