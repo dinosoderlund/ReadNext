@@ -1,0 +1,10 @@
+version: 2
+
+sources:
+  - name: anilist
+    description: Raw data loaded from the AniList API by ingestion/anilist_to_raw.py
+    database: READNEXT
+    schema: RAW
+    tables:
+      - name: anilist_media
+        description: One row per manga or light novel, with the full API response as JSON in `payload`.

@@ -1,0 +1,21 @@
+version: 2
+
+models:
+  - name: stg_anilist__media
+    description: Cleaned manga and light novels from AniList, one row per title.
+    columns:
+      - name: title_id
+        description: AniList id for the title.
+        data_tests:
+          - unique
+          - not_null
+      - name: title
+        description: English title if it exists, otherwise the romaji title.
+        data_tests:
+          - not_null
+      - name: format
+        description: MANGA or NOVEL.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["MANGA", "NOVEL"]
