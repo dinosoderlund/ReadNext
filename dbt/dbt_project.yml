@@ -9,3 +9,6 @@ models:
   readnext:
     staging:
       +materialized: view
+    marts:
+      +materialized: table
+      +schema: marts
