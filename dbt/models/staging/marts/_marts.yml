@@ -1,0 +1,41 @@
+version: 2
+
+models:
+  - name: dim_title
+    description: The catalog. One row per manga or light novel.
+    columns:
+      - name: title_id
+        description: AniList id for the title.
+        data_tests:
+          - unique
+          - not_null
+
+  - name: bridge_title_genre
+    description: Which genres each title has. One row per title and genre.
+    columns:
+      - name: title_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_title')
+                field: title_id
+      - name: genre
+        data_tests:
+          - not_null
+
+  - name: bridge_title_tag
+    description: Which tags each title has, and how strongly (tag_rank 0-100).
+    columns:
+      - name: title_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_title')
+                field: title_id
+      - name: tag_name
+        data_tests:
+          - not_null
+      - name: tag_rank
+        description: How well the tag fits the title, 0-100.
