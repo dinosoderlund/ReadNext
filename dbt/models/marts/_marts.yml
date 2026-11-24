@@ -39,3 +39,35 @@ models:
           - not_null
       - name: tag_rank
         description: How well the tag fits the title, 0-100.
+
+  - name: fct_recommendations
+    description: >
+      The 10 most similar titles for every title, based on shared tags
+      weighted by how well each tag fits (cosine similarity).
+    columns:
+      - name: title_id
+        description: The title the user is looking at.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_title')
+                field: title_id
+      - name: recommended_title_id
+        description: A title we recommend for it.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_title')
+                field: title_id
+      - name: recommendation_rank
+        description: 1 = best match, 10 = tenth best.
+        data_tests:
+          - not_null
+      - name: similarity_score
+        description: How similar the two titles are, from 0 to 1.
+      - name: shared_tag_count
+        description: How many tags the two titles share.
+      - name: top_shared_tags
+        description: The three shared tags that matter most, used to explain the recommendation.
