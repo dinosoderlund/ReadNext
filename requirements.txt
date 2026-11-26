@@ -4,3 +4,8 @@ requests>=2.31
 # dbt
 dbt-core>=1.12,<1.13
 dbt-snowflake>=1.12
+
+# app and export
+streamlit>=1.50
+pandas>=2.2
+pyarrow>=17
