@@ -9,16 +9,19 @@ import requests
 from snowflake_client import get_connection
 
 ANILIST_URL = "https://graphql.anilist.co"
-PAGES_TO_FETCH = 200 # 200 pages x 50 titles = 1 0000 titles
+FORMATS = ["MANGA", "NOVEL"]
+# AniList only lets you page through the first 5 000 results of a query,
+# so we run one query per format.
+PAGES_PER_FORMAT = 100 # 100 pages x 50 titles = 5 000 titles
 TITLES_PER_PAGE = 50 # 50 is the maximum Anilist allows 
 WAIT_SECONDS = 2 # to stay under the rate limit 
 
 # The graphQL query: which titles we want and which fields to get back 
 QUERY = """
-query ($page: Int, $perPage: Int) {
+query ($page: Int, $perPage: Int, $format: MediaFormat) {
   Page(page: $page, perPage: $perPage) {
     pageInfo { hasNextPage }
-    media(type: MANGA, format_in: [MANGA, NOVEL], isAdult: false, sort: POPULARITY_DESC) {
+    media(type: MANGA, format: $format, isAdult: false, sort: POPULARITY_DESC) {
       id
       title { romaji english }
       format
@@ -40,16 +43,16 @@ query ($page: Int, $perPage: Int) {
 
 # get one page of titles from anilist 
 
-def fetch_page(page):
-    variables = {"page": page, "perPage": TITLES_PER_PAGE}
+def fetch_page(page, media_format):
+    variables = {"page": page, "perPage": TITLES_PER_PAGE, "format": media_format}
     response = requests.post(ANILIST_URL, json={"query": QUERY, "variables": variables})
 
     # 429 = we sent too many requests
     if response.status_code == 429:
         wait = int(response.headers.get("Retry-After", 60))
-        print(f"to many requests waiting {wait} seconds")
+        print(f"too many requests waiting {wait} seconds")
         time.sleep(wait)
-        return fetch_page(page)
+        return fetch_page(page, media_format)
 
     response.raise_for_status() # exception for other type of errors 
     return response.json()["data"]["Page"]
@@ -59,7 +62,7 @@ def fetch_page(page):
 def save_titles(cursor, titles):
     """
     We send the whole page(50 titles) as one whole json list.
-    Flattens slits the list into one row per title inside snowflake.
+    FLATTEN splits the list into one row per title inside snowflake.
     Merge = insert the title if new, update if it already exists to avoid duplicates
     """
     cursor.execute("""
@@ -94,17 +97,20 @@ def main():
         )
         
         
-        for page in range(1, PAGES_TO_FETCH + 1):
-          data = fetch_page(page)
-          save_titles(cursor, data["media"])
-          print(f"Page {page}: saved {len(data["media"])} titles")
-          
-          if not data["pageInfo"]["hasNextPage"]:
-            break # no more titles to fetch
-          time.sleep(WAIT_SECONDS)
+        for media_format in FORMATS:
+            print(f"\nFetching {media_format}...")
+
+            for page in range(1, PAGES_PER_FORMAT + 1):
+                data = fetch_page(page, media_format)
+                save_titles(cursor, data["media"])
+                print(f"{media_format} page {page}: saved {len(data['media'])} titles")
+
+                if not data["pageInfo"]["hasNextPage"]:
+                    break  # no more titles of this format
+                time.sleep(WAIT_SECONDS)
         
         cursor.execute("SELECT COUNT(*) FROM RAW.ANILIST_MEDIA")
-        print(f"Done, the table now has {cursor.fetchone()[0]} titles")
+        print(f"Done, The table now has {cursor.fetchone()[0]} titles.")
 
 
 if __name__ == "__main__":
