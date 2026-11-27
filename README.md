@@ -4,7 +4,9 @@
 
 Pick a title you liked and get recommendations based on what makes it special: its themes, mood and tags. Every recommendation comes with an explanation of why.
 
->  **Status:** Phase 1 done, Phase 2 in progress. The data pipeline and the first recommendation model are working. The app is next. See the [roadmap](#roadmap).
+**Live demo:** https://readnext-fgzbsijsxfhgnxwappuzcl.streamlit.app/
+
+> **Status:** The full pipeline and the app are live. Next up: smarter weighting of tags. See the [roadmap](#roadmap).
 
 ---
 
@@ -25,8 +27,8 @@ You don't need to know anything about manga to use it: the tags describe themes 
 ## How it works
 
 ```
-AniList API ──► Python ──► Snowflake RAW ──► dbt STAGING ──► dbt MARTS ──► Streamlit app
-                (ingest)   (raw JSON)        (clean views)   (tables +       (coming next)
+AniList API ──► Python ──► Snowflake RAW ──► dbt STAGING ──► dbt MARTS ──► Parquet ──► Streamlit app
+                (ingest)   (raw JSON)        (clean views)   (tables +       (export)    (live demo)
                                                               recommendations)
 ```
 
@@ -36,7 +38,8 @@ AniList API ──► Python ──► Snowflake RAW ──► dbt STAGING ─�
    - `dim_title`: the catalog, one row per title
    - `bridge_title_genre` and `bridge_title_tag`: genres and tags, one row per title and genre/tag
    - `fct_recommendations`: the 10 most similar titles for every title
-4. **App** (coming next): a Streamlit site to browse the catalog and see recommendations.
+4. **Export** (`ingestion/export_marts.py`): the finished tables are saved as small Parquet files in `app/data/`.
+5. **App** (`app/streamlit_app.py`): a Streamlit site where you pick manga or light novels, search and filter the catalog, open a title and see its recommendations with the reasons behind them.
 
 ### How the recommendations are calculated
 
@@ -55,20 +58,22 @@ AniList API ──► Python ──► Snowflake RAW ──► dbt STAGING ─�
 | Ingestion | Python (`requests`, `snowflake-connector-python`) |
 | Warehouse | Snowflake |
 | Transformation and tests | dbt |
-| App | Streamlit (planned) |
+| App | Streamlit, hosted on Streamlit Community Cloud |
 
 ## Project structure
 
 ```
 readnext/
 ├── snowflake/              # One-time setup SQL (warehouse, database, schemas, role, service user)
-├── ingestion/              # Python: AniList → Snowflake RAW
+├── ingestion/              # Python: AniList → Snowflake RAW, and export to Parquet
 ├── dbt/
 │   ├── models/staging/     # Raw JSON → clean columns (views)
 │   ├── models/marts/       # Catalog, genres, tags and recommendations (tables)
 │   ├── tests/              # Custom SQL tests
 │   └── macros/             # Custom schema naming
-└── app/                    # Streamlit app (coming)
+└── app/
+    ├── streamlit_app.py    # The app
+    └── data/               # Parquet snapshot the app reads
 ```
 
 ## Run it yourself
@@ -96,6 +101,11 @@ readnext/
    python ingestion/anilist_to_raw.py
    dbt build --project-dir dbt --profiles-dir dbt
    ```
+6. **Export and run the app**
+   ```bash
+   python ingestion/export_marts.py
+   streamlit run app/streamlit_app.py
+   ```
 </details>
 
 ## Roadmap
@@ -107,8 +117,9 @@ readnext/
 
 ### Phase 2: First recommendations
 - Tag-based similarity between titles
-- Down-weight common tags (IDF) so broad tags like "Magic" count less than rare, more specific ones
 - Streamlit app: pick a category, browse the catalog, open a title and see recommendations
+- Live demo on Streamlit Community Cloud
+- Down-weight common tags (IDF) so broad tags like "Magic" count less than rare, more specific ones
 - Scheduled pipeline runs
 
 ### Phase 3: Smarter recommendations
@@ -122,7 +133,8 @@ readnext/
 
 - **Raw data is stored untouched as JSON.** The full API response lands in a `VARIANT` column. All cleaning happens in dbt, so the models can be rebuilt or changed at any time without calling the API again.
 - **Idempotent loading.** Each page is loaded with a `MERGE` on the AniList id. Running the ingestion twice updates titles instead of creating duplicates.
-- **Respecting the API's rate limit.** The script pauses between requests and waits for the time AniList asks for (`Retry-After`) if it gets a `429`.
+- **Respecting the API's limits.** The script pauses between requests and waits for the time AniList asks for (`Retry-After`) if it gets a `429`. AniList also only returns the first 5 000 results of a query, so manga and light novels are fetched in separate queries (up to 5 000 of each).
+- **The app reads a Parquet snapshot.** The finished marts tables are exported to small Parquet files committed to the repo. The live demo runs without a warehouse connection, so it keeps working and costs nothing to host.
 - **Views in staging, tables in marts.** Staging views are cheap and always up to date. Marts are tables because the app reads them often and they should be fast.
 - **Recommendations are precomputed.** Similarity is calculated in the pipeline, not when a user clicks. The app only reads finished results, which keeps it fast and simple.
 - **Tests on data and relationships.** dbt tests check unique and non-null ids, allowed values, that every row in the bridge and recommendation tables points to a real title, and that no title is recommended to itself.
@@ -133,8 +145,11 @@ readnext/
 
 - **Broad tags carry too much weight.** Tags like "Magic" appear on hundreds of titles and say little about what makes a story special. Because of that, a calm, reflective story can get a loud action series as a recommendation, just because both involve magic. Next step: IDF weighting, which gives rare tags more weight than common ones (the same idea search engines use).
 - **Same story in different formats.** Many stories exist both as a manga (comic) and a light novel (book). The two versions have almost identical tags, so they often end up as each other's top recommendation. Filtering on AniList's data about related titles would fix this.
-- **Limited catalog for now.** The current data covers the 1 000 most popular titles.
+- **Snapshot data.** The app shows the data from the latest export. New titles and score changes on AniList show up after the pipeline is run again.
+- **Most popular titles only.** The catalog covers the most popular manga and light novels on AniList (up to 5 000 of each), not every title ever published.
 
 ## Data source
 
 Data provided by [AniList](https://anilist.co) via their public API. This is a non-commercial portfolio project.
+
+
