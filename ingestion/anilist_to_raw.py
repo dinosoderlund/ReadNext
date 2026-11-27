@@ -9,7 +9,7 @@ import requests
 from snowflake_client import get_connection
 
 ANILIST_URL = "https://graphql.anilist.co"
-PAGES_TO_FETCH = 20 # 20 pages x 50 titles = 1 000 titles
+PAGES_TO_FETCH = 200 # 200 pages x 50 titles = 1 0000 titles
 TITLES_PER_PAGE = 50 # 50 is the maximum Anilist allows 
 WAIT_SECONDS = 2 # to stay under the rate limit 
 
